@@ -4,7 +4,7 @@ import express from 'express';
 import mongoose from 'mongoose';
 import { fileURLToPath } from 'node:url';
 import jobRoutes from './routes/jobs.js';
-import { connectToDatabase } from './db.js';
+import { connectToDatabase, getMongoUri } from './db.js';
 
 try {
   dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
@@ -22,7 +22,7 @@ const healthHandler = (_request, response) => {
   response.json({
     status: 'ok',
     database: mongoose.connection.readyState === 1,
-    hasMongoUri: Boolean(process.env.MONGODB_URI),
+    hasMongoUri: Boolean(getMongoUri()),
   });
 };
 
@@ -38,7 +38,7 @@ app.use(async (_request, response, next) => {
     console.error('Database connection error:', error.message);
     response.status(500).json({
       message: 'Could not connect to database.',
-      hasMongoUri: Boolean(process.env.MONGODB_URI),
+      hasMongoUri: Boolean(getMongoUri()),
       error: error.message,
     });
   }

@@ -6,16 +6,32 @@ if (!cached) {
   cached = global.mongoose = { conn: null, promise: null };
 }
 
-export async function connectToDatabase() {
-  let mongoUri = process.env.MONGODB_URI;
+export function getMongoUri() {
+  const uri =
+    process.env.MONGODB_URI ||
+    process.env.MONGO_URI ||
+    process.env.DATABASE_URL ||
+    process.env.MONGODB_URL ||
+    process.env.MONGO_URL;
 
-  if (mongoUri) {
-    // Strip any accidental enclosing quotes and whitespace
-    mongoUri = mongoUri.trim().replace(/^["']|["']$/g, '');
-  } else {
-    if (process.env.VERCEL) {
-      console.error('CRITICAL: MONGODB_URI environment variable is missing in Vercel runtime!');
+  if (uri) {
+    return uri.trim().replace(/^["']|["']$/g, '');
+  }
+  return null;
+}
+
+export async function connectToDatabase() {
+  const isServerlessOrProd = Boolean(process.env.VERCEL || process.env.NODE_ENV === 'production');
+  let mongoUri = getMongoUri();
+
+  if (!mongoUri) {
+    if (isServerlessOrProd) {
+      const errMessage =
+        'CRITICAL: MongoDB connection string is missing. Please add MONGODB_URI in Vercel (Settings > Environment Variables) and click Redeploy.';
+      console.error(errMessage);
+      throw new Error(errMessage);
     }
+    // Local development fallback only
     mongoUri = 'mongodb://127.0.0.1:27017/job_application_tracker';
   }
 
