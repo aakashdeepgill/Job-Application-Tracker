@@ -12,3 +12,5 @@ try {
   console.error('Could not connect to MongoDB:', error.message);
   process.exit(1);
 }
+
+export default app;
