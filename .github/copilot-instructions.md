@@ -1,0 +1,6 @@
+- This workspace is Rolemark, a JavaScript MERN job application tracker.
+- `client/` contains the React and Vite dashboard. `server/` contains the Express API and Mongoose Job model.
+- Job records require `companyName` and `role`; the API defaults `status` to `Applied` and `dateApplied` to `Date.now`.
+- Store MongoDB configuration in the root `.env`; never commit credentials or copy them into `.env.example`.
+- Install packages with `npm run install:all` and start the client and API with `npm run dev` from the project root.
+- Keep frontend dependencies in `client/package.json` and API dependencies in `server/package.json`.
