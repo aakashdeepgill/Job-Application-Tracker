@@ -13,7 +13,7 @@ import {
   Pencil,
   Search,
   Sparkles,
-  UserRound,
+  Trash2,
   X,
 } from 'lucide-react';
 
@@ -47,15 +47,25 @@ async function request(path, options = {}) {
 
 function formatDate(value) {
   if (!value) return 'Not set';
-  const date = new Date(`${value.slice(0, 10)}T12:00:00`);
-  return new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(date);
+  try {
+    const str = String(value);
+    const date = new Date(str.includes('T') ? str : `${str.slice(0, 10)}T12:00:00`);
+    if (isNaN(date.getTime())) return 'Not set';
+    return new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(date);
+  } catch {
+    return 'Not set';
+  }
 }
 
 function initials(company) {
-  return company.trim().split(/\s+/).slice(0, 2).map((word) => word[0]).join('').toUpperCase();
+  if (!company || typeof company !== 'string') return '??';
+  const parts = company.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '??';
+  return parts.slice(0, 2).map((word) => word[0] || '').join('').toUpperCase() || '??';
 }
 
 function statusClass(status) {
+  if (!status || typeof status !== 'string') return 'status-applied';
   return `status-${status.toLowerCase()}`;
 }
 
@@ -74,10 +84,11 @@ export default function JobTracker() {
     setIsLoading(true);
     try {
       const data = await request('/jobs');
-      setJobs(data);
+      setJobs(Array.isArray(data) ? data.filter(Boolean) : []);
       setError('');
     } catch (requestError) {
       setError(requestError.message);
+      setJobs([]);
     } finally {
       setIsLoading(false);
     }
@@ -96,18 +107,24 @@ export default function JobTracker() {
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [isModalOpen]);
 
+  const safeJobs = useMemo(() => (Array.isArray(jobs) ? jobs.filter(Boolean) : []), [jobs]);
+
   const filteredJobs = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return jobs.filter((job) => {
+    return safeJobs.filter((job) => {
+      if (!job || typeof job !== 'object') return false;
       const matchesStatus = filter === 'All applications' || job.status === filter;
-      const matchesSearch = !query || `${job.companyName} ${job.role} ${job.location}`.toLowerCase().includes(query);
+      const company = job.companyName || '';
+      const role = job.role || '';
+      const location = job.location || '';
+      const matchesSearch = !query || `${company} ${role} ${location}`.toLowerCase().includes(query);
       return matchesStatus && matchesSearch;
     });
-  }, [filter, jobs, search]);
+  }, [filter, safeJobs, search]);
 
-  const interviewCount = jobs.filter((job) => job.status === 'Interviewing').length;
-  const offerCount = jobs.filter((job) => job.status === 'Offer').length;
-  const activeCount = jobs.filter((job) => ['Applied', 'Interviewing'].includes(job.status)).length;
+  const interviewCount = safeJobs.filter((job) => job.status === 'Interviewing').length;
+  const offerCount = safeJobs.filter((job) => job.status === 'Offer').length;
+  const activeCount = safeJobs.filter((job) => ['Applied', 'Interviewing'].includes(job.status)).length;
 
   function openCreate() {
     setDraft(newDraft());
@@ -117,11 +134,12 @@ export default function JobTracker() {
   }
 
   function openEdit(job) {
+    if (!job) return;
     setDraft({
-      companyName: job.companyName,
-      role: job.role,
-      status: job.status,
-      dateApplied: job.dateApplied?.slice(0, 10) || '',
+      companyName: job.companyName || '',
+      role: job.role || '',
+      status: job.status || 'Applied',
+      dateApplied: typeof job.dateApplied === 'string' ? job.dateApplied.slice(0, 10) : '',
       location: job.location || '',
       jobUrl: job.jobUrl || '',
       notes: job.notes || '',
@@ -135,7 +153,11 @@ export default function JobTracker() {
     event.preventDefault();
     setIsSaving(true);
     setError('');
-    const payload = { ...draft, companyName: draft.companyName.trim(), role: draft.role.trim() };
+    const payload = {
+      ...draft,
+      companyName: (draft.companyName || '').trim(),
+      role: (draft.role || '').trim(),
+    };
     if (!payload.dateApplied) delete payload.dateApplied;
 
     try {
@@ -143,9 +165,17 @@ export default function JobTracker() {
         method: editingId ? 'PUT' : 'POST',
         body: JSON.stringify(payload),
       });
-      setJobs((current) => editingId
-        ? current.map((job) => job._id === saved._id ? saved : job)
-        : [saved, ...current]);
+
+      if (!saved || typeof saved !== 'object' || !saved._id) {
+        throw new Error('Server returned an invalid record.');
+      }
+
+      setJobs((current) => {
+        const list = Array.isArray(current) ? current.filter(Boolean) : [];
+        return editingId
+          ? list.map((job) => (job && job._id === saved._id ? saved : job))
+          : [saved, ...list];
+      });
       setIsModalOpen(false);
       setDraft(newDraft());
       setEditingId(null);
@@ -157,22 +187,26 @@ export default function JobTracker() {
   }
 
   async function updateStatus(job, status) {
+    if (!job || !job._id) return;
     try {
       const updated = await request(`/jobs/${job._id}`, {
         method: 'PUT',
         body: JSON.stringify({ ...job, status }),
       });
-      setJobs((current) => current.map((item) => item._id === updated._id ? updated : item));
+      if (updated && updated._id) {
+        setJobs((current) => (Array.isArray(current) ? current : []).map((item) => (item && item._id === updated._id ? updated : item)));
+      }
     } catch (requestError) {
       setError(requestError.message);
     }
   }
 
   async function deleteJob(job) {
-    if (!window.confirm(`Delete the ${job.role} application at ${job.companyName}?`)) return;
+    if (!job || !job._id) return;
+    if (!window.confirm(`Delete the ${job.role || 'application'} at ${job.companyName || 'company'}?`)) return;
     try {
       await request(`/jobs/${job._id}`, { method: 'DELETE' });
-      setJobs((current) => current.filter((item) => item._id !== job._id));
+      setJobs((current) => (Array.isArray(current) ? current : []).filter((item) => item && item._id !== job._id));
       setError('');
     } catch (requestError) {
       setError(requestError.message);
@@ -189,7 +223,7 @@ export default function JobTracker() {
 
         <div className="sidebar-label">WORKSPACE</div>
         <nav className="side-nav" aria-label="Main navigation">
-          <a className="nav-link active" href="#applications"><span className="nav-icon"><BriefcaseBusiness size={16} /></span><span>Applications</span><span className="nav-count">{jobs.length}</span></a>
+          <a className="nav-link active" href="#applications"><span className="nav-icon"><BriefcaseBusiness size={16} /></span><span>Applications</span><span className="nav-count">{safeJobs.length}</span></a>
         </nav>
 
         <div className="sidebar-bottom">
@@ -218,18 +252,18 @@ export default function JobTracker() {
           </section>
 
           <section className="stats-row" aria-label="Application summary">
-            <div className="stat-item"><span className="stat-label">TOTAL TRACKED</span><div><strong>{jobs.length}</strong><span className="stat-context">applications</span></div><BriefcaseBusiness className="stat-mark mark-blue" size={18} /></div>
+            <div className="stat-item"><span className="stat-label">TOTAL TRACKED</span><div><strong>{safeJobs.length}</strong><span className="stat-context">applications</span></div><BriefcaseBusiness className="stat-mark mark-blue" size={18} /></div>
             <div className="stat-item"><span className="stat-label">IN MOTION</span><div><strong>{activeCount}</strong><span className="stat-context">awaiting next step</span></div><ArrowUpRight className="stat-mark mark-green" size={18} /></div>
             <div className="stat-item"><span className="stat-label">INTERVIEWS</span><div><strong>{interviewCount}</strong><span className="stat-context">in conversation</span></div><CalendarDays className="stat-mark mark-coral" size={18} /></div>
             <div className="stat-item"><span className="stat-label">OFFERS</span><div><strong>{offerCount}</strong><span className="stat-context">to celebrate</span></div><Sparkles className="stat-mark mark-lime" size={18} /></div>
           </section>
 
           <section className="pipeline-section" aria-label="Application pipeline">
-            <div className="pipeline-heading"><div><span className="section-kicker">THE PIPELINE</span><h2>Where things stand</h2></div><span className="pipeline-total">{jobs.length} TOTAL</span></div>
+            <div className="pipeline-heading"><div><span className="section-kicker">THE PIPELINE</span><h2>Where things stand</h2></div><span className="pipeline-total">{safeJobs.length} TOTAL</span></div>
             <div className="pipeline-bars">
               {STATUSES.map((status) => {
-                const count = jobs.filter((job) => job.status === status).length;
-                const ratio = jobs.length ? Math.max(count / jobs.length * 100, count ? 4 : 0) : 0;
+                const count = safeJobs.filter((job) => job.status === status).length;
+                const ratio = safeJobs.length ? Math.max(count / safeJobs.length * 100, count ? 4 : 0) : 0;
                 return <div className="pipeline-stage" key={status}><div className="stage-copy"><span className={`stage-dot ${statusClass(status)}`} />{status}<strong>{count}</strong></div><div className="stage-track"><span className={statusClass(status)} style={{ width: `${ratio}%` }} /></div></div>;
               })}
             </div>
@@ -241,7 +275,7 @@ export default function JobTracker() {
             </div>
             <div className="filter-tabs" role="tablist" aria-label="Filter by application status">
               {FILTERS.map((status) => {
-                const count = status === 'All applications' ? jobs.length : jobs.filter((job) => job.status === status).length;
+                const count = status === 'All applications' ? safeJobs.length : safeJobs.filter((job) => job.status === status).length;
                 return <button aria-selected={filter === status} className={filter === status ? 'selected' : ''} key={status} onClick={() => setFilter(status)} role="tab" type="button">{status}<span>{count}</span></button>;
               })}
             </div>
@@ -252,19 +286,19 @@ export default function JobTracker() {
                 <thead><tr><th>COMPANY / ROLE</th><th>LOCATION</th><th>DATE APPLIED</th><th>STATUS</th><th aria-label="Actions" /></tr></thead>
                 <tbody>
                   {isLoading ? <tr><td className="table-empty" colSpan="5"><span className="table-loader" />Loading your applications…</td></tr> : filteredJobs.map((job, index) => (
-                    <tr className="job-row" key={job._id} style={{ '--row-index': index }}>
-                      <td><div className="company-cell"><span className={`company-mark mark-tone-${index % 5}`}>{initials(job.companyName)}</span><span className="company-info"><strong>{job.companyName}</strong><span>{job.role}</span></span></div></td>
+                    <tr className="job-row" key={job._id || index} style={{ '--row-index': index }}>
+                      <td><div className="company-cell"><span className={`company-mark mark-tone-${index % 5}`}>{initials(job.companyName)}</span><span className="company-info"><strong>{job.companyName || 'Untitled Company'}</strong><span>{job.role || 'Untitled Role'}</span></span></div></td>
                       <td className="location-cell">{job.location ? <><MapPin size={13} />{job.location}</> : <span className="muted-dash">—</span>}</td>
                       <td className="date-cell"><Clock3 size={13} />{formatDate(job.dateApplied)}</td>
-                      <td><label className={`status-select-wrap ${statusClass(job.status)}`}><span>{job.status}</span><ChevronDown size={12} /><select aria-label={`Change ${job.companyName} status`} onChange={(event) => updateStatus(job, event.target.value)} value={job.status}>{STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}</select></label></td>
+                      <td><label className={`status-select-wrap ${statusClass(job.status)}`}><span>{job.status || 'Applied'}</span><ChevronDown size={12} /><select aria-label={`Change ${job.companyName} status`} onChange={(event) => updateStatus(job, event.target.value)} value={job.status || 'Applied'}>{STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}</select></label></td>
                       <td><div className="row-actions"><button aria-label={`Edit ${job.companyName} application`} onClick={() => openEdit(job)} title="Edit application" type="button"><Pencil size={14} /></button>{job.jobUrl && <a aria-label={`Open ${job.companyName} job listing`} href={job.jobUrl} rel="noreferrer" target="_blank" title="Open job listing"><ExternalLink size={14} /></a>}<button aria-label={`Delete ${job.companyName} application`} onClick={() => deleteJob(job)} title="Delete application" type="button"><Trash2 size={14} /></button></div></td>
                     </tr>
                   ))}
-                  {!isLoading && filteredJobs.length === 0 && <tr><td className="table-empty" colSpan="5"><strong>{jobs.length ? 'No matches for this view' : 'Your next chapter starts here'}</strong><span>{jobs.length ? 'Try a different status or search.' : 'Your applications will appear here.'}</span></td></tr>}
+                  {!isLoading && filteredJobs.length === 0 && <tr><td className="table-empty" colSpan="5"><strong>{safeJobs.length ? 'No matches for this view' : 'Your next chapter starts here'}</strong><span>{safeJobs.length ? 'Try a different status or search.' : 'Your applications will appear here.'}</span></td></tr>}
                 </tbody>
               </table>
             </div>
-            <div className="list-footer"><span>Showing {filteredJobs.length} of {jobs.length} applications</span><span><ArrowDownRight size={13} /> Updated as you go</span></div>
+            <div className="list-footer"><span>Showing {filteredJobs.length} of {safeJobs.length} applications</span><span><ArrowDownRight size={13} /> Updated as you go</span></div>
           </section>
           <footer className="main-footer"><span>ROLEMARK / JOB SEARCH, ORGANIZED</span><span>A little progress, every day.</span></footer>
         </div>

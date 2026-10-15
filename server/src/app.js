@@ -37,7 +37,7 @@ app.use(async (_request, response, next) => {
   } catch (error) {
     console.error('Database connection error:', error.message);
     response.status(500).json({
-      message: 'Could not connect to database.',
+      message: `Could not connect to database: ${error.message}`,
       hasMongoUri: Boolean(getMongoUri()),
       error: error.message,
     });
