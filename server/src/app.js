@@ -24,16 +24,24 @@ app.use(async (_request, response, next) => {
     next();
   } catch (error) {
     console.error('Database connection error:', error.message);
-    response.status(500).json({ message: 'Could not connect to database.' });
+    response.status(500).json({
+      message: 'Could not connect to database.',
+      hasMongoUri: Boolean(process.env.MONGODB_URI),
+      error: error.message,
+    });
   }
 });
 
-app.get('/api/health', (_request, response) => {
-  response.json({ status: 'ok', database: mongoose.connection.readyState === 1 });
-});
-app.get('/health', (_request, response) => {
-  response.json({ status: 'ok', database: mongoose.connection.readyState === 1 });
-});
+const healthHandler = (_request, response) => {
+  response.json({
+    status: 'ok',
+    database: mongoose.connection.readyState === 1,
+    hasMongoUri: Boolean(process.env.MONGODB_URI),
+  });
+};
+
+app.get('/api/health', healthHandler);
+app.get('/health', healthHandler);
 
 app.use('/api/jobs', jobRoutes);
 app.use('/jobs', jobRoutes);
