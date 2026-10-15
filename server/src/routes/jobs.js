@@ -49,12 +49,9 @@ router.put('/:id', async (request, response, next) => {
 
 router.delete('/:id', async (request, response, next) => {
   try {
-    if (!mongoose.isValidObjectId(request.params.id)) {
-      return response.status(400).json({ message: 'Invalid application id.' });
+    if (mongoose.isValidObjectId(request.params.id)) {
+      await Job.findByIdAndDelete(request.params.id);
     }
-
-    const job = await Job.findByIdAndDelete(request.params.id);
-    if (!job) return response.status(404).json({ message: 'Application not found.' });
     response.status(204).end();
   } catch (error) {
     next(error);

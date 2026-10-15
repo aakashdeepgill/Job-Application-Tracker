@@ -202,13 +202,19 @@ export default function JobTracker() {
   }
 
   async function deleteJob(job) {
-    if (!job || !job._id) return;
+    if (!job) return;
+    if (!job._id) {
+      setJobs((current) => (Array.isArray(current) ? current : []).filter((item) => item !== job));
+      return;
+    }
     if (!window.confirm(`Delete the ${job.role || 'application'} at ${job.companyName || 'company'}?`)) return;
     try {
       await request(`/jobs/${job._id}`, { method: 'DELETE' });
       setJobs((current) => (Array.isArray(current) ? current : []).filter((item) => item && item._id !== job._id));
       setError('');
     } catch (requestError) {
+      // If already deleted or not found on server, remove from UI so it does not remain stuck
+      setJobs((current) => (Array.isArray(current) ? current : []).filter((item) => item && item._id !== job._id));
       setError(requestError.message);
     }
   }
