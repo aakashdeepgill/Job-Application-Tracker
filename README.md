@@ -21,6 +21,18 @@ npm run dev
 
 Open the Vite URL printed in the terminal, normally `http://localhost:5173`. If that port is occupied, Vite selects another available port. The API listens on port `5000` by default. MongoDB uses the `job_application_tracker` database; override it with `MONGODB_DB` if desired.
 
+## Deploy to Vercel
+
+Rolemark is pre-configured for full-stack deployment on Vercel:
+
+1. Push this repository to your GitHub account.
+2. In Vercel, select **Add New...** > **Project** and import this repository.
+3. Keep the **Root Directory** as `./` (default).
+4. Under **Environment Variables**, add:
+   - `MONGODB_URI`: Your MongoDB Atlas connection URI (`mongodb+srv://<user>:<password>@<cluster>.mongodb.net`)
+   - `MONGODB_DB`: (Optional) Database name, defaults to `job_application_tracker`
+5. Click **Deploy**. Vercel will build the React client and route API endpoints to serverless functions automatically.
+
 ## Use
 
 - Add an application with a company, role, status, and application date.
@@ -42,6 +54,8 @@ The `Job` Mongoose model requires `companyName` and `role`. Supported statuses a
 
 ## Project layout
 
+- `api/` - Vercel Serverless Function entry point
 - `client/` - React dashboard and Vite setup
 - `server/` - Express API, Mongoose model, CRUD routes, and schema tests
+- `vercel.json` - Vercel build and rewrite configuration
 - `.env.example` - MongoDB connection and API port template
