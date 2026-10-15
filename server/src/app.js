@@ -17,7 +17,19 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
 
-// Middleware to ensure DB connection is established for serverless / API requests
+// Health checks (available immediately, never blocked by database connection)
+const healthHandler = (_request, response) => {
+  response.json({
+    status: 'ok',
+    database: mongoose.connection.readyState === 1,
+    hasMongoUri: Boolean(process.env.MONGODB_URI),
+  });
+};
+
+app.get('/api/health', healthHandler);
+app.get('/health', healthHandler);
+
+// Middleware to ensure DB connection is established for API routes
 app.use(async (_request, response, next) => {
   try {
     await connectToDatabase();
@@ -31,17 +43,6 @@ app.use(async (_request, response, next) => {
     });
   }
 });
-
-const healthHandler = (_request, response) => {
-  response.json({
-    status: 'ok',
-    database: mongoose.connection.readyState === 1,
-    hasMongoUri: Boolean(process.env.MONGODB_URI),
-  });
-};
-
-app.get('/api/health', healthHandler);
-app.get('/health', healthHandler);
 
 app.use('/api/jobs', jobRoutes);
 app.use('/jobs', jobRoutes);
